@@ -17,4 +17,3 @@ the artifacts and then run ...
 The *.nuget files thus produced can then be installed
 in a local repository or uploaded to one of the nuget servers.
 
-

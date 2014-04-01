@@ -155,9 +155,6 @@
 #elif (defined (BSD) || defined (bsd))
 #   define __UTYPE_BSDOS
 #   define __UNIX__
-#elif (defined (APPLE) || defined (__APPLE__))
-#   define __UTYPE_GENERIC
-#   define __UNIX__
 #elif (defined (__ANDROID__))
 #   define __UTYPE_ANDROID
 #   define __UNIX__
@@ -166,6 +163,9 @@
 #   define __UNIX__
 #   ifndef __NO_CTYPE
 #   define __NO_CTYPE                   //  Suppress warnings on tolower()
+#   endif
+#   ifndef _BSD_SOURCE
+#   define _BSD_SOURCE                  //  Include stuff from 4.3 BSD Unix
 #   endif
 #elif (defined (Mips))
 #   define __UTYPE_MIPS
@@ -179,7 +179,7 @@
 #elif (defined (OpenBSD) || defined (__OpenBSD__))
 #   define __UTYPE_OPENBSD
 #   define __UNIX__
-#elif (defined (__APPLE__))
+#elif (defined (APPLE) || defined (__APPLE__))
 #   define __UTYPE_OSX
 #   define __UNIX__
 #elif (defined (NeXT))
@@ -275,6 +275,7 @@
 #   include <sys/ioctl.h>
 #   include <sys/file.h>
 #   include <sys/wait.h>
+#   include <sys/un.h>
 #   include <sys/uio.h>             //  Let CZMQ build with libzmq/3.x
 #   include <netinet/in.h>          //  Must come before arpa/inet.h
 #   if (!defined (__UTYPE_ANDROID)) && (!defined (__UTYPE_IBMAIX)) \
@@ -353,13 +354,13 @@
 #   endif
 #endif
 
-// Add missing defines for Android.
-#if (defined (__UTYPE_ANDROID))
-#   if (!defined (S_IREAD))
-#      define S_IREAD S_IRUSR
+//  Add missing defines for Android
+#ifdef __UTYPE_ANDROID
+#   ifndef S_IREAD
+#       define S_IREAD S_IRUSR
 #   endif
-#   if (!defined (S_IWRITE))
-#      define S_IWRITE S_IWUSR
+#   ifndef S_IWRITE
+#       define S_IWRITE S_IWUSR
 #   endif
 #endif
 
@@ -408,6 +409,9 @@ typedef struct sockaddr_in inaddr_t;    //  Internet socket address structure
 #endif
 
 //- A number of POSIX and C99 keywords and data types -----------------------
+//  CZMQ uses uint for array indices; equivalent to unsigned int, but more
+//  convenient in code. We define it in czmq_prelude.h on systems that do
+//  not define it by default.
 
 #if (defined (__WINDOWS__))
 #   if (!defined (__cplusplus) && (!defined (inline)))
@@ -424,31 +428,22 @@ typedef struct sockaddr_in inaddr_t;    //  Internet socket address structure
     typedef unsigned int  uint;
 #   if (!defined (__MINGW32__))
     typedef int mode_t;
+    typedef long ssize_t;
     typedef __int32 int32_t;
     typedef __int64 int64_t;
     typedef unsigned __int32 uint32_t;
     typedef unsigned __int64 uint64_t;
-    typedef long ssize_t;
 #   endif
 #   if (!defined (va_copy))
     //  MSVC does not support C99's va_copy so we use a regular assignment
 #       define va_copy(dest,src) (dest) = (src)
 #   endif
-#elif (defined (__APPLE__))
+#elif (defined (__UTYPE_OSX))
     typedef unsigned long ulong;
     typedef unsigned int uint;
 #endif
 
 //- Error reporting ---------------------------------------------------------
-// If the compiler is GCC or supports C99, include enclosing function
-// in CZMQ assertions
-#if defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)
-#   define CZMQ_ASSERT_SANE_FUNCTION    __func__
-#elif defined (__GNUC__) && (__GNUC__ >= 2)
-#   define CZMQ_ASSERT_SANE_FUNCTION    __FUNCTION__
-#else
-#   define CZMQ_ASSERT_SANE_FUNCTION    "<unknown>"
-#endif
 
 //  Replacement for malloc() which asserts if we run out of heap, and
 //  which zeroes the allocated block.
@@ -456,15 +451,14 @@ static inline void *
     safe_malloc (
     size_t size,
     const char *file,
-    unsigned line,
-    const char *func)
+    unsigned line)
 {
     void
         *mem;
 
     mem = calloc (1, size);
     if (mem == NULL) {
-        fprintf (stderr, "FATAL ERROR at %s:%u, in %s\n", file, line, func);
+        fprintf (stderr, "FATAL ERROR at %s:%u\n", file, line);
         fprintf (stderr, "OUT OF MEMORY (malloc returned NULL)\n");
         fflush (stderr);
         abort ();
@@ -480,7 +474,14 @@ static inline void *
 #if defined _ZMALLOC_DEBUG || _ZMALLOC_PEDANTIC
 #   define zmalloc(size) calloc(1,(size))
 #else
-#   define zmalloc(size) safe_malloc((size), __FILE__, __LINE__, CZMQ_ASSERT_SANE_FUNCTION)
+#   define zmalloc(size) safe_malloc((size), __FILE__, __LINE__)
+#endif
+
+//  GCC supports validating format strings for functions that act like printf
+#if defined (__GNUC__) && (__GNUC__ >= 2)
+#   define CHECK_PRINTF(a)   __attribute__((format (printf, a, a + 1)))
+#else
+#   define CHECK_PRINTF(a)
 #endif
 
 //- Socket header files -----------------------------------------------------
@@ -505,8 +506,10 @@ typedef int SOCKET;
 
 //- DLL exports -------------------------------------------------------------
 
-#if defined (_WINDLL)
-#   if defined LIBCZMQ_EXPORTS
+#if defined (__WINDOWS__)
+#   if defined LIBCZMQ_STATIC
+#       define CZMQ_EXPORT
+#   elif defined LIBCZMQ_EXPORTS
 #       define CZMQ_EXPORT __declspec(dllexport)
 #   else
 #       define CZMQ_EXPORT __declspec(dllimport)

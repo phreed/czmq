@@ -41,10 +41,10 @@ int main (int argc, char *argv [])
     //  These are ordered from most basic to most complex
     zrex_test (verbose);
     zsys_test (verbose);
+    zchunk_test (verbose);
     zconfig_test (verbose);
     zmutex_test (verbose);
     zclock_test (verbose);
-    zchunk_test (verbose);
     zdir_patch_test (verbose);
     zdir_test (verbose);
     zdigest_test (verbose);
@@ -67,7 +67,6 @@ int main (int argc, char *argv [])
     zcert_test (verbose);
     zcertstore_test (verbose);
     zauth_test (verbose);
-    zservice_test (verbose);
 #if (ZMQ_VERSION_MAJOR == 4)
 //     zmonitor_test (verbose);
 #endif

@@ -25,7 +25,7 @@ CZMQ_EXPORT void
 //  Use this to force the interface for beacons
 //  This is experimental; may be merged into zbeacon class.
 CZMQ_EXPORT void
-    zsys_set_interface (char *iinterface);
+    zsys_set_interface (const char *interface_name);
 
 //  Return network interface name to use for broadcasts.
 //  Returns "" if no interface was set.
@@ -104,8 +104,16 @@ CZMQ_EXPORT zframe_t *
 //  Handle an I/O error on some socket operation; will report and die on
 //  fatal errors, and continue silently on "try again" errors.
 CZMQ_EXPORT void
-    zsys_socket_error (char *reason);
+    zsys_socket_error (const char *reason);
     
+//  Move the current process into the background. The precise effect depends
+//  on the operating system. On POSIX boxes, moves to a specified working
+//  directory (if specified), closes all file handles, reopens stdin, stdout,
+//  and stderr to the null device, and sets the process to ignore SIGHUP. On
+//  Windows, does nothing. Returns 0 if OK, -1 if there was an error.
+CZMQ_EXPORT int
+    zsys_daemonize (const char *workdir);
+
 //  Self test of this class
 CZMQ_EXPORT int
     zsys_test (bool verbose);
@@ -114,10 +122,9 @@ CZMQ_EXPORT int
 DESCRIPTION
 -----------
 
-The zsys class provides a portable wrapper for miscellaneous functions
-that we want to wrap but which don't fit into any of the existing
-classes. Eventually all non-portable functionality might be moved here
-but for now it covers only file systems.
+The zsys class provides a portable wrapper for system calls. We collect
+them here to reduce the number of weird #ifdefs in other classes. As far
+as possible, the bulk of CZMQ classes are fully portable.
 
 
 EXAMPLE
@@ -156,7 +163,7 @@ EXAMPLE
     assert (major == CZMQ_VERSION_MAJOR);
     assert (minor == CZMQ_VERSION_MINOR);
     assert (patch == CZMQ_VERSION_PATCH);
-    
+
     char *string = s_vprintf ("%s %02x", "Hello", 16);
     assert (streq (string, "Hello 10"));
     zstr_free (&string);

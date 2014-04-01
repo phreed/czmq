@@ -69,7 +69,7 @@ CZMQ_EXPORT int
 CZMQ_EXPORT int
     zsocket_connect (void *socket, const char *format, ...);
 
-//  Disonnect a socket from a formatted endpoint
+//  Disconnect a socket from a formatted endpoint
 //  Returns 0 if OK, -1 if the endpoint was invalid or the function
 //  isn't supported.
 CZMQ_EXPORT int
@@ -81,8 +81,13 @@ CZMQ_EXPORT bool
     zsocket_poll (void *socket, int msecs);
 
 //  Returns socket type as printable constant string
-CZMQ_EXPORT char *
+CZMQ_EXPORT const char *
     zsocket_type_str (void *socket);
+
+//  Send data over a socket as a single message frame.
+//  Accepts these flags: ZFRAME_MORE and ZFRAME_DONTWAIT.
+CZMQ_EXPORT int
+    zsocket_sendmem (void *socket, const void *data, size_t size, int flags);
 
 //  Send a signal over a socket. A signal is a zero-byte message.
 //  Signals are used primarily between threads, over pipe sockets.
@@ -95,10 +100,21 @@ CZMQ_EXPORT int
 CZMQ_EXPORT int
     zsocket_wait (void *socket);
 
+//  Send data over a socket as a single message frame.
+//  Returns -1 on error, 0 on success
+CZMQ_EXPORT int
+    zsocket_sendmem (void *socket, const void *data, size_t size, int flags);
+
 //  Self test of this class
 CZMQ_EXPORT int
     zsocket_test (bool verbose);
 //  @end
+
+//  Compiler hints
+CZMQ_EXPORT int zsocket_bind (void *socket, const char *format, ...) CHECK_PRINTF (2);
+CZMQ_EXPORT int zsocket_unbind (void *socket, const char *format, ...) CHECK_PRINTF (2);
+CZMQ_EXPORT int zsocket_connect (void *socket, const char *format, ...) CHECK_PRINTF (2);
+CZMQ_EXPORT int zsocket_disconnect (void *socket, const char *format, ...) CHECK_PRINTF (2);
 
 #ifdef __cplusplus
 }

@@ -27,7 +27,7 @@
 @header
     Expandable hash table container
 @discuss
-    Note that it's relatively slow (~50K insertions/deletes per second), so
+    Note that it's relatively slow (~50k insertions/deletes per second), so
     don't do inserts/updates on the critical path for message I/O. It can
     do ~2.5M lookups per second for 16-char keys. Timed on a 1.6GHz CPU.
 @end
@@ -466,7 +466,7 @@ zhash_foreach (zhash_t *self, zhash_foreach_fn *callback, void *argument)
 //  the file. If you use a null format, all comments are deleted.
 
 void
-zhash_comment (zhash_t *self, char *format, ...)
+zhash_comment (zhash_t *self, const char *format, ...)
 {
     if (format) {
         if (!self->comments) {
@@ -491,7 +491,7 @@ zhash_comment (zhash_t *self, char *format, ...)
 //  Returns 0 if OK, else -1 if a file error occurred
 
 int
-zhash_save (zhash_t *self, char *filename)
+zhash_save (zhash_t *self, const char *filename)
 {
     assert (self);
 
@@ -526,7 +526,7 @@ zhash_save (zhash_t *self, char *filename)
 //  Returns 0 if OK, else -1 if a file was not readable.
 
 int
-zhash_load (zhash_t *self, char *filename)
+zhash_load (zhash_t *self, const char *filename)
 {
     assert (self);
     zhash_autofree (self);
@@ -537,9 +537,9 @@ zhash_load (zhash_t *self, char *filename)
     //  file.
 
     //  Take copy of filename in case self->filename is same string.
-    filename = strdup (filename);
+    char *filename_copy = strdup (filename);
     free (self->filename);
-    self->filename = filename;
+    self->filename = filename_copy;
     self->modified = zsys_file_modified (self->filename);
     FILE *handle = fopen (self->filename, "r");
     if (!handle)
@@ -620,28 +620,37 @@ zhash_pack (zhash_t *self)
     assert (self);
 
     //  First, calculate packed data size
-    size_t frame_size = 1;      //  Dictionary size, items
+    size_t frame_size = 4;      //  Dictionary size, number-4
     uint index;
     for (index = 0; index != self->limit; index++) {
         item_t *item = self->items [index];
         while (item) {
-            //  [Length]key=value
-            frame_size += 2 + strlen (item->key) + strlen ((char *) item->value);
+            //  We store key as short string
+            frame_size += 1 + strlen (item->key);
+            //  We store value as long string
+            frame_size += 4 + strlen ((char *) item->value);
             item = item->next;
         }
     }
     //  Now serialize items into the frame
     zframe_t *frame = zframe_new (NULL, frame_size);
     byte *needle = zframe_data (frame);
-    *needle++ = (byte) self->size;
+    //  Store size as number-4
+    *(uint32_t *) needle = htonl (self->size);
+    needle += 4;
     for (index = 0; index != self->limit; index++) {
         item_t *item = self->items [index];
         while (item) {
-            char string [256];
-            snprintf (string, 256, "%s=%s", item->key, (char *) item->value);
-            *needle++ = (byte) strlen (string);
-            memcpy (needle, string, strlen (string));
-            needle += strlen (string);
+            //  Store key as string
+            *needle++ = (byte) strlen (item->key);
+            memcpy (needle, item->key, strlen (item->key));
+            needle += strlen (item->key);
+
+            //  Store value as longstr
+            *(uint32_t *) needle = htonl (strlen ((char *) item->value));
+            needle += 4;
+            memcpy (needle, (char *) item->value, strlen ((char *) item->value));
+            needle += strlen ((char *) item->value);
             item = item->next;
         }
     }
@@ -659,34 +668,45 @@ zhash_unpack (zframe_t *frame)
 {
     zhash_t *self = zhash_new ();
     assert (self);
-    zhash_autofree (self);
-
     assert (frame);
-    if (zframe_size (frame) < 1)
+    if (zframe_size (frame) < 4)
         return self;            //  Arguable...
 
     byte *needle = zframe_data (frame);
     byte *ceiling = needle + zframe_size (frame);
-    size_t nbr_items = *needle++;
+    size_t nbr_items = ntohl (*(uint32_t *) needle);
+    needle += 4;
     while (nbr_items && needle < ceiling) {
-        size_t string_size = *needle++;
-        if (needle + string_size <= ceiling) {
-            char string [256];
-            memcpy (string, needle, string_size);
-            string [string_size] = 0;
-            needle += string_size;
-            char *value = strchr (string, '=');
-            if (value) {
-                *value++ = 0;
-                //  Takes copy of value automatically
-                zhash_insert (self, string, value);
+        //  Get key as string
+        size_t key_size = *needle++;
+        if (needle + key_size <= ceiling) {
+            char key [256];
+            memcpy (key, needle, key_size);
+            key [key_size] = 0;
+            needle += key_size;
+
+            //  Get value as longstr
+            if (needle + 4 <= ceiling) {
+                size_t value_size = ntohl (*(uint32_t *) needle);
+                needle += 4;
+                //  Be wary of malformed frames
+                if (needle + value_size <= ceiling) {
+                    char *value = (char *) malloc (value_size + 1);
+                    memcpy (value, needle, value_size);
+                    value [value_size] = 0;
+                    needle += value_size;
+                    //  Hash takes ownership of value
+                    zhash_insert (self, key, value);
+                }
             }
         }
     }
+    //  Hash will free values in destructor
+    zhash_autofree (self);
     return self;
 }
 
-
+            
 //  --------------------------------------------------------------------------
 //  Runs selftest of class
 //

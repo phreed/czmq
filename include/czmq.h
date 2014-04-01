@@ -27,13 +27,13 @@
 #define __CZMQ_H_INCLUDED__
 
 //  Set up environment for the application
-//
+
 #include "czmq_prelude.h"
 
 //  CZMQ version macros for compile-time API detection
 
 #define CZMQ_VERSION_MAJOR 2
-#define CZMQ_VERSION_MINOR 1
+#define CZMQ_VERSION_MINOR 2
 #define CZMQ_VERSION_PATCH 0
 
 #define CZMQ_MAKE_VERSION(major, minor, patch) \
@@ -41,7 +41,7 @@
 #define CZMQ_VERSION \
     CZMQ_MAKE_VERSION(CZMQ_VERSION_MAJOR, CZMQ_VERSION_MINOR, CZMQ_VERSION_PATCH)
 
-//  Classes in the API
+//  Public API classes
 
 #include "zchunk.h"
 #include "zclock.h"
@@ -71,7 +71,6 @@
 #include "zcert.h"
 #include "zcertstore.h"
 #include "zproxy.h"
-#include "zservice.h"
 #include "zuuid.h"
 
 #endif

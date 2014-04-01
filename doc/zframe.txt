@@ -91,6 +91,10 @@ CZMQ_EXPORT void
 CZMQ_EXPORT void
     zframe_reset (zframe_t *self, const void *data, size_t size);
 
+//  Put a block of data to the frame payload.
+CZMQ_EXPORT int
+    zframe_put_block (zframe_t *self, byte *data, size_t size);
+
 //  Self test of this class
 CZMQ_EXPORT int
     zframe_test (bool verbose);

@@ -41,6 +41,7 @@
 typedef struct _node_t {
     struct _node_t *next;
     void *item;
+    zlist_free_fn *free_fn;
 } node_t;
 
 
@@ -79,6 +80,9 @@ zlist_destroy (zlist_t **self_p)
         node_t *node = (*self_p)->head;
         while (node) {
             node_t *next = node->next;
+            if (node->free_fn)
+                (node->free_fn) (node->item);
+            else
             if (self->autofree)
                 free (node->item);
             free (node);
@@ -164,7 +168,8 @@ zlist_next (zlist_t *self)
 
 
 //  --------------------------------------------------------------------------
-//  Add item to the end of the list
+//  Append an item to the end of the list, return 0 if OK
+//  or -1 if this failed for some reason (out of memory).
 
 int
 zlist_append (zlist_t *self, void *item)
@@ -183,17 +188,19 @@ zlist_append (zlist_t *self, void *item)
         self->tail->next = node;
     else
         self->head = node;
+    
     self->tail = node;
     node->next = NULL;
+    
     self->size++;
     self->cursor = NULL;
-
     return 0;
 }
 
 
 //  --------------------------------------------------------------------------
-//  Insert item at the beginning of the list
+//  Push an item to the start of the list, return 0 if OK
+//  or -1 if this failed for some reason (out of memory).
 
 int
 zlist_push (zlist_t *self, void *item)
@@ -212,6 +219,7 @@ zlist_push (zlist_t *self, void *item)
     self->head = node;
     if (self->tail == NULL)
         self->tail = node;
+    
     self->size++;
     self->cursor = NULL;
     return 0;
@@ -269,6 +277,35 @@ zlist_remove (zlist_t *self, void *item)
     }
 }
 
+//  --------------------------------------------------------------------------
+//  Set a free function for the specified list item. When the item is
+//  destroyed, the free function, if any, is called on that item.
+//  Use this when list items are dynamically allocated, to ensure that
+//  you don't have memory leaks. You can pass 'free' or NULL as a free_fn.
+//  Returns the item, or NULL if there is no such item.
+
+void *
+zlist_freefn (zlist_t *self, void *item, zlist_free_fn *fn, bool at_tail)
+{
+    node_t *node = self->head;
+    if (at_tail)
+        node = self->tail;
+    while (node) {
+        if (node->item == item) {
+            node->free_fn = fn;
+            return item;
+        }
+        node = node->next;
+    }
+    return NULL;
+}
+
+static void
+s_zlist_free (void *data)
+{
+    zlist_t *self = (zlist_t *)data;
+    zlist_destroy (&self);
+}
 
 //  --------------------------------------------------------------------------
 //  Make a copy of list. If the list has autofree set, the copied list will
@@ -287,7 +324,7 @@ zlist_dup (zlist_t *self)
     if (copy) {
         node_t *node;
         for (node = self->head; node; node = node->next) {
-            if (!zlist_append (copy, node->item)) {
+            if (zlist_append (copy, node->item) == -1) {
                 zlist_destroy (&copy);
                 break;
             }
@@ -443,6 +480,10 @@ zlist_test (int verbose)
     assert (zlist_size (list) == 3);
     assert (zlist_first (list) == bread);
 
+    zlist_t *sub_list = zlist_dup (list);
+    assert (sub_list);
+    assert (zlist_size (sub_list) == 3);
+
     zlist_sort (list, s_compare);
     char *item;
     item = (char *) zlist_pop (list);
@@ -452,6 +493,13 @@ zlist_test (int verbose)
     item = (char *) zlist_pop (list);
     assert (item == cheese);
     assert (zlist_size (list) == 0);
+
+    assert (zlist_size (sub_list) == 3);
+    zlist_push (list, sub_list);
+    zlist_t *sub_list_2 = zlist_dup (sub_list);
+    zlist_append (list, sub_list_2);
+    assert (zlist_freefn (list, sub_list, &s_zlist_free, false) == sub_list);
+    assert (zlist_freefn (list, sub_list_2, &s_zlist_free, true) == sub_list_2);
 
     //  Destructor should be safe to call twice
     zlist_destroy (&list);

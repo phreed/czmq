@@ -47,7 +47,7 @@ struct _zloop_t {
     size_t poll_size;           //  Size of poll set
     zmq_pollitem_t *pollset;    //  zmq_poll set
     s_poller_t *pollact;        //  Pollers for this poll set
-    bool dirty;                 //  True if pollset needs rebuilding
+    bool need_rebuild;          //  True if pollset needs rebuilding
     bool verbose;               //  True if verbose tracing wanted
     zlist_t *zombies;           //  List of timers to kill
 };
@@ -135,7 +135,7 @@ s_rebuild_pollset (zloop_t *self)
         item_nbr++;
         poller = (s_poller_t *) zlist_next (self->pollers);
     }
-    self->dirty = false;
+    self->need_rebuild = false;
     return 0;
 }
 
@@ -157,7 +157,7 @@ s_tickless_timer (zloop_t *self)
     if (timeout < 0)
         timeout = 0;
     if (self->verbose)
-        zclock_log ("I: zloop: polling for %d msec", timeout);
+	zclock_log ("I: zloop: polling for %d msec", (int)timeout);
     return timeout;
 }
 
@@ -229,25 +229,23 @@ zloop_destroy (zloop_t **self_p)
 //  the handler, passing the arg. Returns 0 if OK, -1 if there was an error.
 //  If you register the pollitem more than once, each instance will invoke its
 //  corresponding handler.
+//  A pollitem with socket=NULL and fd=0 will be interpreted as 'poll on fd zero'.
 
 int
 zloop_poller (zloop_t *self, zmq_pollitem_t *item, zloop_fn handler, void *arg)
 {
     assert (self);
 
-    if (!item->socket && !item->fd)
+    if (item->socket
+    &&  streq (zsocket_type_str (item->socket), "UNKNOWN"))
         return -1;
-
-    if (item->socket)
-        if (streq (zsocket_type_str (item->socket), "UNKNOWN"))
-            return -1;
 
     s_poller_t *poller = s_poller_new (item, handler, arg);
     if (poller) {
         if (zlist_append (self->pollers, poller))
             return -1;
 
-        self->dirty = true;
+        self->need_rebuild = true;
         if (self->verbose)
             zclock_log ("I: zloop: register %s poller (%p, %d)",
                 item->socket? zsocket_type_str (item->socket): "FD",
@@ -276,7 +274,8 @@ zloop_poller_end (zloop_t *self, zmq_pollitem_t *item)
         ||  (item->fd     && item->fd     == poller->item.fd)) {
             zlist_remove (self->pollers, poller);
             free (poller);
-            self->dirty = true;
+            //  Force rebuild to avoid reading from freed poller
+            self->need_rebuild = true;
         }
         poller = (s_poller_t *) zlist_next (self->pollers);
     }
@@ -326,7 +325,7 @@ zloop_timer (zloop_t *self, size_t delay, size_t times, zloop_timer_fn handler, 
     if (zlist_append (self->timers, timer))
         return -1;
     if (self->verbose)
-        zclock_log ("I: zloop: register timer id=%d delay=%d times=%d", 
+        zclock_log ("I: zloop: register timer id=%d delay=%zd times=%zd", 
                     timer_id, delay, times);
     
     return timer_id;
@@ -389,7 +388,7 @@ zloop_start (zloop_t *self)
     }
     //  Main reactor loop
     while (!zctx_interrupted) {
-        if (self->dirty) {
+        if (self->need_rebuild) {
             // If s_rebuild_pollset() fails, break out of the loop and
             // return its error
             rc = s_rebuild_pollset (self);
@@ -454,17 +453,8 @@ zloop_start (zloop_t *self)
                             zsocket_type_str (poller->item.socket): "FD",
                         poller->item.socket, poller->item.fd);
                 rc = poller->handler (self, &self->pollset [item_nbr], poller->arg);
-                if (rc == -1)
-                    break;      //  Poller handler signaled break
-                    
-                //  If the poller handler calls zloop_poller_end on a poller 
-                //  other than itself, we need to force rebuild in order to 
-                //  avoid reading from freed memory in the handler.
-                if (self->dirty) {
-                    if (self->verbose)
-                        zclock_log ("I: zloop: pollers canceled, forcing rebuild");
-                    break;
-                }
+                if (rc == -1 || self->need_rebuild)
+                    break; 
             }
         }
         //  Now handle any timer zombies

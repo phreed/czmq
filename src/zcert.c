@@ -179,7 +179,7 @@ zcert_secret_txt (zcert_t *self)
 //  Set certificate metadata from formatted string.
 
 void
-zcert_set_meta (zcert_t *self, char *name, char *format, ...)
+zcert_set_meta (zcert_t *self, const char *name, const char *format, ...)
 {
     va_list argptr;
     va_start (argptr, format);
@@ -195,7 +195,7 @@ zcert_set_meta (zcert_t *self, char *name, char *format, ...)
 //  exist, returns NULL.
 
 char *
-zcert_meta (zcert_t *self, char *name)
+zcert_meta (zcert_t *self, const char *name)
 {
     assert (self);
     return (char *) zhash_lookup (self->metadata, name);
@@ -218,7 +218,7 @@ zcert_meta_keys (zcert_t *self)
 //  Load certificate from file (constructor)
 
 zcert_t *
-zcert_load (char *filename)
+zcert_load (const char *filename)
 {
 #if (ZMQ_VERSION_MAJOR == 4)
     assert (filename);
@@ -288,7 +288,7 @@ s_save_metadata_all (zcert_t *self)
 
 
 int
-zcert_save (zcert_t *self, char *filename)
+zcert_save (zcert_t *self, const char *filename)
 {
     assert (self);
     assert (filename);
@@ -297,28 +297,17 @@ zcert_save (zcert_t *self, char *filename)
     zcert_save_public (self, filename);
 
     //  Now save secret certificate using filename with "_secret" suffix
-    s_save_metadata_all (self);
-    zconfig_set_comment (self->config,
-        "   ZeroMQ CURVE **Secret** Certificate");
-    zconfig_set_comment (self->config,
-        "   DO NOT PROVIDE THIS FILE TO OTHER USERS nor change its permissions.");
-    zconfig_put (self->config, "/curve/public-key", self->public_txt);
-    zconfig_put (self->config, "/curve/secret-key", self->secret_txt);
-    
     char filename_secret [256];
     snprintf (filename_secret, 256, "%s_secret", filename);
-    zsys_file_mode_private ();
-    int rc = zconfig_save (self->config, filename_secret);
-    zsys_file_mode_default ();
+    int rc = zcert_save_secret (self, filename_secret);
     return rc;
 }
-
 
 //  --------------------------------------------------------------------------
 //  Save public certificate only to file for persistent storage.
 
 int
-zcert_save_public (zcert_t *self, char *filename)
+zcert_save_public (zcert_t *self, const char *filename)
 {
     assert (self);
     assert (filename);
@@ -335,6 +324,29 @@ zcert_save_public (zcert_t *self, char *filename)
     
     zconfig_put (self->config, "/curve/public-key", self->public_txt);
     int rc = zconfig_save (self->config, filename);
+    return rc;
+}
+
+//  --------------------------------------------------------------------------
+//  Save public certificate only to file for persistent storage.
+
+int
+zcert_save_secret (zcert_t *self, const char *filename)
+{
+    assert (self);
+    assert (filename);
+
+    s_save_metadata_all (self);
+    zconfig_set_comment (self->config,
+        "   ZeroMQ CURVE **Secret** Certificate");
+    zconfig_set_comment (self->config,
+        "   DO NOT PROVIDE THIS FILE TO OTHER USERS nor change its permissions.");
+    zconfig_put (self->config, "/curve/public-key", self->public_txt);
+    zconfig_put (self->config, "/curve/secret-key", self->secret_txt);
+    
+    zsys_file_mode_private ();
+    int rc = zconfig_save (self->config, filename);
+    zsys_file_mode_default ();
     return rc;
 }
 

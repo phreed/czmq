@@ -91,6 +91,9 @@ CZMQ_EXPORT int
     zstr_test (bool verbose);
 //  @end
 
+//  Compiler hints
+CZMQ_EXPORT int zstr_sendf (void *socket, const char *format, ...) CHECK_PRINTF (2);
+
 #ifdef __cplusplus
 }
 #endif

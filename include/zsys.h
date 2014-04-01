@@ -48,7 +48,7 @@ CZMQ_EXPORT void
 //  Use this to force the interface for beacons
 //  This is experimental; may be merged into zbeacon class.
 CZMQ_EXPORT void
-    zsys_set_interface (char *iinterface);
+    zsys_set_interface (const char *interface_name);
 
 //  Return network interface name to use for broadcasts.
 //  Returns "" if no interface was set.
@@ -127,8 +127,16 @@ CZMQ_EXPORT zframe_t *
 //  Handle an I/O error on some socket operation; will report and die on
 //  fatal errors, and continue silently on "try again" errors.
 CZMQ_EXPORT void
-    zsys_socket_error (char *reason);
+    zsys_socket_error (const char *reason);
     
+//  Move the current process into the background. The precise effect depends
+//  on the operating system. On POSIX boxes, moves to a specified working
+//  directory (if specified), closes all file handles, reopens stdin, stdout,
+//  and stderr to the null device, and sets the process to ignore SIGHUP. On
+//  Windows, does nothing. Returns 0 if OK, -1 if there was an error.
+CZMQ_EXPORT int
+    zsys_daemonize (const char *workdir);
+
 //  Self test of this class
 CZMQ_EXPORT int
     zsys_test (bool verbose);
